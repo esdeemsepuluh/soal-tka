@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
+  <header class="bg-blue-700 text-white p-4 shadow-md flex-shrink-0">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+      <h1 class="text-lg md:text-xl font-bold">Uji Siaga TKA: Pemahaman Tekstual</h1>
+    </div>
+  </header>
+
+  <div class="flex-grow flex flex-col md:flex-row max-w-7xl w-full mx-auto p-2 md:p-4 gap-2 md:gap-4 overflow-hidden">
+    <!-- Panel Kiri: Teks Stimulus -->
+    <div class="h-2/5 md:h-full w-full md:w-1/2 bg-white rounded-xl shadow border p-4 md:p-6 overflow-y-auto" id="left-panel">
+      <h2 class="text-xs md:text-sm font-bold text-blue-600 uppercase mb-3 border-b pb-2 sticky top-0 bg-white z-10">Teks Bacaan</h2>
+      <div id="stimulus-text" class="text-sm md:text-base text-gray-700 leading-relaxed space-y-3">
+        <p class="italic text-gray-400">Pilih soal di panel kanan untuk memunculkan teks...</p>
+      </div>
+    </div>
+
+    <!-- Panel Kanan: Daftar Soal -->
+    <div class="h-3/5 md:h-full w-full md:w-1/2 bg-white rounded-xl shadow border p-4 md:p-6 overflow-y-auto" id="right-panel">
+      <h2 class="text-xs md:text-sm font-bold text-blue-600 uppercase mb-3 border-b pb-2 sticky top-0 bg-white z-10">Lembar Jawaban</h2>
+      
+      <form id="quiz-form" onsubmit="submitForm(event)">
+        <div id="loading" class="text-center py-10 text-gray-400 animate-pulse">Memuat soal interaktif...</div>
+        <div id="questions-container" class="space-y-6 hidden"></div>
+        
+        <button type="submit" id="btn-submit" class="mt-8 w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg shadow transition">
+          Kirim Jawaban & Sinkronisasi
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Hasil -->
+  <div id="result-modal" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center z-50 px-4">
+    <div class="bg-white rounded-2xl p-6 md:p-8 max-w-sm w-full text-center">
+      <h3 class="text-xl md:text-2xl font-bold mb-2">Selesai!</h3>
+      <p class="text-sm md:text-base text-gray-500 mb-6">Nilai Anda telah masuk ke Google Classroom.</p>
+      <div class="text-5xl md:text-6xl font-black text-blue-600 mb-4" id="score-text">100</div>
+      <p class="text-xs md:text-sm text-gray-600 font-medium" id="detail-text">20/20 benar</p>
+    </div>
+  </div>
+
+  <script>
+    let questions = [];
+    const courseParams = {
+      courseId: "<?= courseId ?>",
+      courseWorkId: "<?= courseWorkId ?>",
+      submissionId: "<?= submissionId ?>"
+    };
+
+    window.onload = function() {
+      google.script.run.withSuccessHandler(renderQuestions).getQuestionsData();
+    };
+
+    function renderQuestions(data) {
+      questions = data;
+      document.getElementById('loading').classList.add('hidden');
+      const container = document.getElementById('questions-container');
+      container.classList.remove('hidden');
+
+      if(data.length > 0) updateStimulus(0);
+
+      container.innerHTML = data.map((q, i) => `
+        <div class="p-4 md:p-5 border border-gray-200 rounded-lg bg-gray-50 hover:border-blue-300 transition cursor-pointer" onclick="updateStimulus(${i})">
+          <p class="font-semibold text-gray-800 text-sm md:text-base mb-4"><span class="text-blue-600">${i+1}.</span> ${q.pertanyaan}</p>
+          ${renderInput(q)}
+        </div>
+      `).join('');
+    }
+
+    function renderInput(q) {
+      if (q.tipe === 'PG') {
+        return `<div class="space-y-2">` + q.opsi.map(opt => `
+          <label class="flex items-start gap-3 p-2 md:p-3 bg-white border rounded cursor-pointer hover:bg-blue-50">
+            <input type="radio" name="q_${q.id}" value="${opt}" class="mt-1" required>
+            <span class="text-xs md:text-sm text-gray-700">${opt}</span>
+          </label>
+        `).join('') + `</div>`;
+      } else if (q.tipe === 'CHECKBOX') {
+        return `<div class="space-y-2">` + q.opsi.map(opt => `
+          <label class="flex items-start gap-3 p-2 md:p-3 bg-white border rounded cursor-pointer hover:bg-blue-50">
+            <input type="checkbox" name="q_${q.id}" value="${opt}" class="mt-1">
+            <span class="text-xs md:text-sm text-gray-700">${opt}</span>
+          </label>
+        `).join('') + `</div>`;
+      } else if (q.tipe === 'TRUE_FALSE') {
+        return `<div class="overflow-x-auto"><table class="w-full text-xs md:text-sm text-left border min-w-[300px]"><thead class="bg-gray-100"><tr><th class="p-2 border">Statement</th><th class="p-2 border text-center">True</th><th class="p-2 border text-center">False</th></tr></thead><tbody>` + 
+        q.opsi.map((opt, i) => `
+          <tr>
+            <td class="p-2 border">${opt}</td>
+            <td class="p-2 border text-center"><input type="radio" name="q_${q.id}_${i}" value="True" required></td>
+            <td class="p-2 border text-center"><input type="radio" name="q_${q.id}_${i}" value="False"></td>
+          </tr>
+        `).join('') + `</tbody></table></div>`;
+      }
+    }
+
+    function updateStimulus(index) {
+      document.getElementById('stimulus-text').innerHTML = questions[index].stimulus;
+      document.getElementById('left-panel').scrollTop = 0;
+    }
+
+    function submitForm(e) {
+      e.preventDefault();
+      document.getElementById('btn-submit').innerText = "Memproses & Mengirim Nilai...";
+      document.getElementById('btn-submit').disabled = true;
+
+      const formData = new FormData(e.target);
+      const answers = {};
+
+      questions.forEach(q => {
+        if (q.tipe === 'PG') {
+          answers[q.id] = formData.get(`q_${q.id}`);
+        } else if (q.tipe === 'CHECKBOX') {
+          answers[q.id] = formData.getAll(`q_${q.id}`);
+        } else if (q.tipe === 'TRUE_FALSE') {
+          answers[q.id] = q.opsi.map((_, i) => formData.get(`q_${q.id}_${i}`));
+        }
+      });
+
+      google.script.run
+        .withSuccessHandler(res => {
+          document.getElementById('score-text').innerText = res.score;
+          document.getElementById('detail-text').innerText = `${res.correct} dari ${res.total} soal benar`;
+          document.getElementById('result-modal').classList.remove('hidden');
+        })
+        .submitAnswers({ answers: answers, ...courseParams });
+    }
+  </script>
+</body>
+</html>
